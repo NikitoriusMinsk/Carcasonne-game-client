@@ -1,13 +1,23 @@
 import styles from "@/styles/pages/Home.module.css";
 import { type NextPage } from "next";
 import Head from "next/head";
-import Link from "next/link";
-import { signIn, signOut, useSession } from "next-auth/react";
-
-import { api } from "@/utils/api";
+import { useEffect, useRef } from "react";
+import { HubConnectionBuilder } from "@microsoft/signalr";
+import { HubConnection } from "@microsoft/signalr/dist/esm/HubConnection";
 
 const Home: NextPage = () => {
-	const hello = api.example.hello.useQuery({ text: "from tRPC" });
+	const connection = useRef<HubConnection | null>(null);
+
+	useEffect(() => {
+		connection.current = new HubConnectionBuilder()
+			.withUrl("https://localhost:7055/hubs/game")
+			.build();
+
+		connection.current.start();
+		return () => {
+			connection.current?.stop();
+		};
+	}, []);
 
 	return (
 		<>
@@ -22,7 +32,11 @@ const Home: NextPage = () => {
 					href="/favicon.ico"
 				/>
 			</Head>
-			<main className={styles.main}></main>
+			<main className={styles.main}>
+				<button onClick={() => connection.current?.send("ReadTiles")}>
+					Pososatb
+				</button>
+			</main>
 		</>
 	);
 };
