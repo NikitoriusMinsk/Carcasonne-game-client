@@ -1,7 +1,7 @@
 import styles from "@/styles/pages/Home.module.css";
 import { type NextPage } from "next";
 import Head from "next/head";
-import { useEffect, useReducer, useRef, useState } from "react";
+import { MutableRefObject, useEffect, useReducer, useRef, useState } from "react";
 import { HubConnectionBuilder } from "@microsoft/signalr";
 import { HubConnection } from "@microsoft/signalr/dist/esm/HubConnection";
 import Image from "next/image";
@@ -9,11 +9,18 @@ import Image from "next/image";
 type BoardTile = { id: string; rotation: number } | null;
 
 const Home: NextPage = () => {
-	const [connection, setConnection] = useState<HubConnection | null>(null);
+	const connection = useRef<HubConnection | null>(null);
 	const [board, dispatch] = useReducer(boardReducer, new Array<BoardTile[]>(), () => {
-		return Array.from(Array(72), () => new Array(72).fill(null));
+		return Array.from(Array(144), () => new Array(144).fill(null));
 	});
-	const [heldTile, setHeldTile] = useState<string>();
+	const [heldTile, setHeldTile] = useState<{ id: string | null; rotation: number }>({
+		id: null,
+		rotation: 0,
+	});
+	const [possiblePlacements, setPossiblePlacements] = useState<
+		{ x: number; y: number }[]
+	>([]);
+	const [isFirstTurn, setIsFirstTurn] = useState(true);
 
 	function boardReducer(
 		state: Array<BoardTile[]>,
@@ -33,29 +40,55 @@ const Home: NextPage = () => {
 			default:
 				return state;
 		}
+	}
 
-		return state;
+	function handleRotate() {
+		if (heldTile.rotation === 3) {
+			connection.current
+				?.invoke("GetPossiblePlacements", heldTile.id, 0)
+				.then((res) => {
+					setPossiblePlacements(res);
+					setHeldTile({ ...heldTile, rotation: 0 });
+				});
+		} else {
+			connection.current
+				?.invoke("GetPossiblePlacements", heldTile.id, heldTile.rotation + 1)
+				.then((res) => {
+					setPossiblePlacements(res);
+					setHeldTile({ ...heldTile, rotation: heldTile.rotation + 1 });
+				});
+		}
+	}
+
+	function handlePlaceTile(x: number, y: number) {
+		connection.current?.send("PlaceTile", heldTile.id, x, y, heldTile.rotation);
+		setPossiblePlacements([]);
+		if (isFirstTurn) setIsFirstTurn(false);
+		setHeldTile({ id: null, rotation: 0 });
 	}
 
 	useEffect(() => {
-		const _connection = new HubConnectionBuilder()
+		connection.current = new HubConnectionBuilder()
 			.withUrl("https://localhost:7055/hubs/games")
 			.build();
 
-		_connection.on(
+		connection.current.on(
 			"TilePlaced",
 			(id: string, x: number, y: number, rotation: number) => {
 				dispatch({ type: "place", position: { x, y }, id, rotation });
+				setIsFirstTurn(false);
 			}
 		);
-		_connection.on("TileDrawn", (id: string) => {
-			setHeldTile(id);
+		connection.current.on("TileDrawn", (id: string) => {
+			connection.current?.invoke("GetPossiblePlacements", id, 0).then((res) => {
+				setHeldTile({ id, rotation: 0 });
+				setPossiblePlacements(res);
+			});
 		});
 
-		_connection.start().catch((err) => console.error(err));
-		setConnection(_connection);
+		connection.current.start().catch((err) => console.error(err));
 		return () => {
-			_connection.stop();
+			connection.current?.stop();
 		};
 	}, []);
 
@@ -72,10 +105,18 @@ const Home: NextPage = () => {
 				<Controls connection={connection} />
 				<div className={styles.heldTile}>
 					<Image
-						src={`/images/tiles/${heldTile}.png`}
-						fill
+						src={`/images/tiles/${heldTile.id}.png`}
+						className={styles[`rotate${90 * heldTile.rotation}`]}
+						height={90}
+						width={90}
 						alt=""
 					/>
+					<button
+						onClick={handleRotate}
+						disabled={heldTile.id === null}
+					>
+						Rotate
+					</button>
 				</div>
 				<div className={styles.board}>
 					{board.map((row, rowIndex) => (
@@ -83,29 +124,31 @@ const Home: NextPage = () => {
 							key={`row_${rowIndex}`}
 							className={styles.row}
 						>
-							{row.map((tile, colIndex) => (
-								<div
-									key={`tile_${rowIndex}:${colIndex}`}
-									className={styles.tile}
-									onClick={() =>
-										connection?.send(
-											"PlaceTile",
-											heldTile,
-											rowIndex,
-											colIndex,
-											0 // TODO: rotate tiles
-										)
-									}
-								>
-									{tile && (
-										<Image
-											src={`/images/tiles/${tile?.id}.png`}
-											fill
-											alt=""
-										/>
-									)}
-								</div>
-							))}
+							{row.map((tile, colIndex) => {
+								const isPossible =
+									possiblePlacements.some(
+										(place) =>
+											place.x === rowIndex && place.y === colIndex
+									) || isFirstTurn;
+								return (
+									<div
+										key={`tile_${rowIndex}:${colIndex}`}
+										//prettier-ignore
+										className={`${styles.tile} ${isPossible ? styles.active : ""} ${styles[`rotate${90 * tile?.rotation!}`]}`}
+										onClick={() =>
+											handlePlaceTile(rowIndex, colIndex)
+										}
+									>
+										{tile && (
+											<Image
+												src={`/images/tiles/${tile?.id}.png`}
+												fill
+												alt=""
+											/>
+										)}
+									</div>
+								);
+							})}
 						</div>
 					))}
 				</div>
@@ -114,24 +157,28 @@ const Home: NextPage = () => {
 	);
 };
 
-const Controls: React.FC<{ connection?: HubConnection | null }> = (props) => {
+const Controls: React.FC<{ connection: MutableRefObject<HubConnection | null> }> = (
+	props
+) => {
 	const { connection } = props;
 
 	return (
 		<div className={styles.controls}>
-			<button onClick={() => connection?.send("CreateRoom", "test", "Nik")}>
+			<button onClick={() => connection.current?.send("CreateRoom", "test", "Nik")}>
 				create room
 			</button>
-			<button onClick={() => connection?.send("JoinRoom", "test", "Nik")}>
+			<button onClick={() => connection.current?.send("JoinRoom", "test", "Nik")}>
 				join room
 			</button>
-			<button onClick={() => connection?.send("LeaveRoom", "test")}>
+			<button onClick={() => connection.current?.send("LeaveRoom", "test")}>
 				leave room
 			</button>
-			<button onClick={() => connection?.send("DeleteRoom", "test")}>
+			<button onClick={() => connection.current?.send("DeleteRoom", "test")}>
 				delete room
 			</button>
-			<button onClick={() => connection?.send("StartGame")}>start game</button>
+			<button onClick={() => connection.current?.send("StartGame")}>
+				start game
+			</button>
 		</div>
 	);
 };

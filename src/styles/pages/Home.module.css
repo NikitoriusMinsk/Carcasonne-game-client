@@ -8,10 +8,32 @@
     position: fixed;
     top: 50px;
     left: 0;
+    z-index: 99;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.heldTile img {
     height: 90px;
     width: 90px;
-    z-index: 99;
     background-color: #ccc;
+}
+
+.rotate0 {
+    transform: rotateZ(0deg);
+}
+
+.rotate90 {
+    transform: rotateZ(90deg);
+}
+
+.rotate180 {
+    transform: rotateZ(180deg);
+}
+
+.rotate270 {
+    transform: rotateZ(270deg);
 }
 
 .controls {
@@ -40,4 +62,11 @@
     min-height: 90px;
     min-width: 90px;
     border: 1px solid #ccc;
+    pointer-events: none;
+}
+
+.board .row .tile.active {
+    box-shadow: 0px 0px 15px 5px #00FF17;
+    pointer-events: all;
+    cursor: pointer;
 }
