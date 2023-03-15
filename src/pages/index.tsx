@@ -1,7 +1,7 @@
 import styles from "@/styles/pages/Home.module.css";
 import { type NextPage } from "next";
 import Head from "next/head";
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { HubConnectionBuilder } from "@microsoft/signalr";
 import { HubConnection } from "@microsoft/signalr/dist/esm/HubConnection";
 import Image from "next/image";
@@ -9,10 +9,11 @@ import Image from "next/image";
 type BoardTile = { id: string; rotation: number } | null;
 
 const Home: NextPage = () => {
-	const connection = useRef<HubConnection | null>(null);
+	const [connection, setConnection] = useState<HubConnection | null>(null);
 	const [board, dispatch] = useReducer(boardReducer, new Array<BoardTile[]>(), () => {
-		return new Array(72).fill(new Array(72).fill(null));
+		return Array.from(Array(72), () => new Array(72).fill(null));
 	});
+	const [heldTile, setHeldTile] = useState<string>();
 
 	function boardReducer(
 		state: Array<BoardTile[]>,
@@ -37,20 +38,24 @@ const Home: NextPage = () => {
 	}
 
 	useEffect(() => {
-		connection.current = new HubConnectionBuilder()
+		const _connection = new HubConnectionBuilder()
 			.withUrl("https://localhost:7055/hubs/games")
 			.build();
 
-		connection.current.on(
+		_connection.on(
 			"TilePlaced",
 			(id: string, x: number, y: number, rotation: number) => {
 				dispatch({ type: "place", position: { x, y }, id, rotation });
 			}
 		);
+		_connection.on("TileDrawn", (id: string) => {
+			setHeldTile(id);
+		});
 
-		connection.current.start().catch((err) => console.error(err));
+		_connection.start().catch((err) => console.error(err));
+		setConnection(_connection);
 		return () => {
-			connection.current?.stop();
+			_connection.stop();
 		};
 	}, []);
 
@@ -64,15 +69,37 @@ const Home: NextPage = () => {
 				/>
 			</Head>
 			<main className={styles.main}>
-				<Controls connection={connection.current} />
+				<Controls connection={connection} />
+				<div className={styles.heldTile}>
+					<Image
+						src={`/images/tiles/${heldTile}.png`}
+						fill
+						alt=""
+					/>
+				</div>
 				<div className={styles.board}>
-					{board.map((row) => (
-						<div className={styles.row}>
-							{row.map((tile) => (
-								<div className={styles.tile}>
+					{board.map((row, rowIndex) => (
+						<div
+							key={`row_${rowIndex}`}
+							className={styles.row}
+						>
+							{row.map((tile, colIndex) => (
+								<div
+									key={`tile_${rowIndex}:${colIndex}`}
+									className={styles.tile}
+									onClick={() =>
+										connection?.send(
+											"PlaceTile",
+											heldTile,
+											rowIndex,
+											colIndex,
+											0 // TODO: rotate tiles
+										)
+									}
+								>
 									{tile && (
 										<Image
-											src={`/images/tiles/${tile?.id}`}
+											src={`/images/tiles/${tile?.id}.png`}
 											fill
 											alt=""
 										/>
@@ -104,6 +131,7 @@ const Controls: React.FC<{ connection?: HubConnection | null }> = (props) => {
 			<button onClick={() => connection?.send("DeleteRoom", "test")}>
 				delete room
 			</button>
+			<button onClick={() => connection?.send("StartGame")}>start game</button>
 		</div>
 	);
 };

@@ -4,6 +4,16 @@
     max-width: 100vw;
 }
 
+.heldTile {
+    position: fixed;
+    top: 50px;
+    left: 0;
+    height: 90px;
+    width: 90px;
+    z-index: 99;
+    background-color: #ccc;
+}
+
 .controls {
     position: fixed;
     top: 0;
