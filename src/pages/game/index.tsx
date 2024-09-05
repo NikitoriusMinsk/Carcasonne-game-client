@@ -77,13 +77,14 @@ const GamePage: NextPage = () => {
 			};
 
 			connection.onTileDrawn = (id: string) => {
-				connection?.getPossiblePlacements(id, 0).then((res) => {
+				console.log(`Tile drawn ${id}`)
+				connection.getPossiblePlacements(id, 0).then((res) => {
 					setHeldTile({ id, rotation: 0 });
 					setPossiblePlacements(res);
 				});
 			};
 		}
-	}, []);
+	}, [connection]);
 
 	return (
 		<>

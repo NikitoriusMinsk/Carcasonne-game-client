@@ -1,4 +1,4 @@
-import { HubConnection, HubConnectionBuilder } from "@microsoft/signalr";
+import { HubConnection, HubConnectionBuilder, LogLevel } from "@microsoft/signalr";
 
 type onTilePlacedHandler = (id: string, x: number, y: number, rotation: number) => void;
 type onTileDrawnHandler = (id: string) => void;
@@ -11,6 +11,7 @@ export default class HubController {
 	constructor(url: string) {
 		this.connection = new HubConnectionBuilder()
 			.withUrl(url)
+			.configureLogging(LogLevel.Debug)
 			.withAutomaticReconnect()
 			.build();
 
